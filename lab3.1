@@ -1,7 +1,7 @@
 #include "iostream"
 #include "windows.h"
 #include "ctime"
-#define THREAD_NUMBER 16
+#define THREAD_NUMBER 4
 #define COUNT_SIZE 8308330
 using namespace std;
 
@@ -33,6 +33,8 @@ struct PI{
 
 PI var;
 
+CRITICAL_SECTION cs;
+
 
 //Область параллельного исполнения
 DWORD WINAPI counter(CONST LPVOID lpParam) //lpParam в данном случае - индекс потока
@@ -43,9 +45,12 @@ DWORD WINAPI counter(CONST LPVOID lpParam) //lpParam в данном случа�
 
     while (var.iter<100000000)
     {
+        EnterCriticalSection(&cs);
         i = var.iter;
         cutter = i + COUNT_SIZE;
         var.iter = cutter;
+        LeaveCriticalSection(&cs);
+
         if (cutter > 100000000) cutter = 100000000;
         tmp = 0;
         for (long j = i; j < cutter; j++) {
@@ -74,6 +79,7 @@ int main()
     for (int k = 0;k<THREAD_NUMBER;k++)
         index[k] = k;
 
+    InitializeCriticalSection(&cs);
 
     for (int k = 0;k<THREAD_NUMBER;k++) //Создание потоков и событий
     {
@@ -99,7 +105,7 @@ int main()
     while (!finished(appThreads))
     {
         T = WaitForMultipleObjects(THREAD_NUMBER,appThreads.thread_state,false,INFINITE); //Получает индекс первого отработавшего потока
-        Sleep(0);
+        Sleep(1);
         ResetEvent(appThreads.thread_state[T]); //Сброс события и продолжение исполнения отработавшего потока
         ResumeThread(appThreads.thread[T]);
     }
@@ -118,6 +124,7 @@ int main()
     cout.precision(100000000);
 
     cout<<"PI = "<<var.PI_COUNT<<endl;
+    DeleteCriticalSection(&cs);
 
 
 
