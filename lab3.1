@@ -1,7 +1,8 @@
 #include "iostream"
 #include "windows.h"
 #include "ctime"
-#define THREAD_NUMBER 4
+
+#define THREAD_NUMBER 16
 #define COUNT_SIZE 8308330
 using namespace std;
 
@@ -10,21 +11,24 @@ using namespace std;
 
 struct threads {
     HANDLE thread[THREAD_NUMBER]; //Хендлы потоков
-    HANDLE thread_state[THREAD_NUMBER]; //Хендлы ивентов
-    bool signaled[THREAD_NUMBER]; //Информация о завершении потоков
+    //HANDLE thread_state[THREAD_NUMBER]; //Хендлы ивентов
+    //bool signaled[THREAD_NUMBER]; //Информация о завершении потоков
 };
 
-
-bool finished(threads a)
-{
-    bool res = true;
-    for (int k = 0;k<THREAD_NUMBER;k++)
-        res = res & a.signaled[k];
-
-    return res;
-} //Проверяет, завершены ли все потоки
+//bool finished(threads a)
+//{
+//    bool res = true;
+//    for (int k = 0;k<THREAD_NUMBER;k++)
+//        res = res & a.signaled[k];
+//
+//    return res;
+//} //Проверяет, завершены ли все потоки
 
 threads appThreads;
+
+long double time_start,timer;
+long double timec[THREAD_NUMBER] ;
+int count[THREAD_NUMBER];
 
 struct PI{
     long double PI_COUNT = 0;
@@ -36,33 +40,44 @@ PI var;
 CRITICAL_SECTION cs;
 
 
+
 //Область параллельного исполнения
 DWORD WINAPI counter(CONST LPVOID lpParam) //lpParam в данном случае - индекс потока
 {
     long double tmp; //Переменная для подсчета
     long i; //Начало текущего блока
     long cutter; //Конец текущего блока
+    long double time_startc;
 
     while (var.iter<100000000)
     {
+        time_startc = clock();
+
         EnterCriticalSection(&cs);
         i = var.iter;
         cutter = i + COUNT_SIZE;
+        if (cutter > 100000000) cutter = 100000000;
         var.iter = cutter;
         LeaveCriticalSection(&cs);
 
-        if (cutter > 100000000) cutter = 100000000;
         tmp = 0;
         for (long j = i; j < cutter; j++) {
             tmp = tmp + 4 / (100000000 + (j + 0.5) * (j + 0.5) / 100000000);
         }
         var.PI_COUNT = var.PI_COUNT + tmp;
-        if (var.iter>=100000000) appThreads.signaled[int(lpParam)] = TRUE; //Если поток получил последний блок итераций, считаем, что он завершен
-        SetEvent(appThreads.thread_state[int(lpParam)]);//Установка события, что поток закончил обработку текущего блока итераций
-        SuspendThread(GetCurrentThread()); //Приостановка потока
+
+        //cout<<"THREAD "<<int(lpParam)<<" SETTING FINISHED...   ";
+        //SetEvent(appThreads.thread_state[int(lpParam)]);//Установка события, что поток закончил обработку текущего блока итераций
+        //cout<<"SET"<<endl;
+
+        timec[int(lpParam)] = timec[int(lpParam)] + (clock() - time_startc);
+        count[int(lpParam)]++;
+        //cout<<int(lpParam)<<" - "<<count[int(lpParam)]<<endl;
+        //SuspendThread(GetCurrentThread()); //Приостановка потока
     }
-    appThreads.signaled[int(lpParam)] = TRUE;
-    SetEvent(appThreads.thread_state[int(lpParam)]);
+    //appThreads.signaled[int(lpParam)] = TRUE;
+    //cout<<"THREAD "<<int(lpParam)<<" SIGNALED EXIT"<<endl;
+    //SetEvent(appThreads.thread_state[int(lpParam)]);
     ExitThread(0); //Стандартное завершение потока
 };
 
@@ -73,11 +88,17 @@ int main()
     cout<<"PI counter ver 0.1"<<endl;
     cout<<"Using "<<THREAD_NUMBER<<" threads"<<endl;
 
-    long double time_start,time;
+
+
     time_start = clock();
     int index[THREAD_NUMBER];
     for (int k = 0;k<THREAD_NUMBER;k++)
+    {
         index[k] = k;
+        count[k] = 0;
+        timec[k] = 0;
+    }
+
 
     InitializeCriticalSection(&cs);
 
@@ -91,42 +112,45 @@ int main()
                 CREATE_SUSPENDED,
                 nullptr
         );
-        appThreads.thread_state[k] = CreateEventA(
-                nullptr,
-                TRUE,
-                TRUE,
-                nullptr
-                );
-        appThreads.signaled[k] = FALSE;
+//        appThreads.thread_state[k] = CreateEventA(
+//                nullptr,
+//                TRUE,
+//                TRUE,
+//                nullptr
+//                );
+//        appThreads.signaled[k] = FALSE;
     }
 
 
-    int T;
-    while (!finished(appThreads))
+    for (auto & k : appThreads.thread)
     {
-        T = WaitForMultipleObjects(THREAD_NUMBER,appThreads.thread_state,false,INFINITE); //Получает индекс первого отработавшего потока
-        Sleep(1);
-        ResetEvent(appThreads.thread_state[T]); //Сброс события и продолжение исполнения отработавшего потока
-        ResumeThread(appThreads.thread[T]);
+        ResumeThread(k);
     }
-
+    int T=WaitForMultipleObjects(THREAD_NUMBER,appThreads.thread,true,10000);
+    if (T == 258) cout<<"TIMED OUT"<<endl;
 
     for (int k = 0;k<THREAD_NUMBER;k++) //Закрытие хендлов потоков и событий
     {
         CloseHandle(appThreads.thread[k]);
-        CloseHandle(appThreads.thread_state[k]);
+        //CloseHandle(appThreads.thread_state[k]);
     }
 
 
 
-    time = (clock() - time_start);
-    cout<<"Time taken: "<<time<<" ms"<<endl;
+    timer = (clock() - time_start);
+    cout<<"Time taken: "<<timer<<" ms"<<endl;
+    //cout<<"Time taken for counting(AVG): "<<timec/count<<" * "<< count <<" ms"<<endl;
+//    for (int k = 0;k<THREAD_NUMBER;k++)
+//    {
+//        cout<< "Time taken for thread "<<k<<": TOTAL = "<<timec[k]<<"; AVG = "<<timec[k]/count[k]<<" COUNTS = "<<count[k]<<endl;
+//    }
+
     cout.precision(100000000);
 
     cout<<"PI = "<<var.PI_COUNT<<endl;
     DeleteCriticalSection(&cs);
 
-
-
+    GetLastError();
+    //system("pause");
 
 }
