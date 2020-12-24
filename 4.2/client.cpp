@@ -1,6 +1,7 @@
 #include <windows.h>
 #include <iostream>
 #include <string>
+#define buffSize 512
 
 using namespace std;
 
@@ -9,7 +10,6 @@ void WINAPI readCompletionRoutine(DWORD dwErrorCode, DWORD dwNumberOfBytesTransf
 }
 
 
-constexpr auto buffSize = 512;
 
 int main()
 {
