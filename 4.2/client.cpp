@@ -1,7 +1,7 @@
 #include <windows.h>
 #include <iostream>
 #include <string>
-#define buffSize 512
+#define buffSize 4096
 
 using namespace std;
 
